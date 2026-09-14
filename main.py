@@ -7,16 +7,17 @@ from aiogram.filters import Command
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiohttp import web
 
-BOT_TOKEN = "8842632927:AAHT1_55_gaXKrktCmeg6ja0qlB9h96BCZI"
-ADMIN_ID = 6992041213  # Sizning Telegram ID ingiz
-CARD_NUMBER = "5614 6835 1687 0326"  # Karta raqamingiz
-CARD_HOLDER = "B. M"  # Karta egasi ismi
+BOT_TOKEN = "8842632927:AAFdmB4hJoz1fuovQNnpXrph11uyUoPTids"
+ADMIN_ID = 6992041213
+CARD_NUMBER = "5614 6835 1687 0326"
+CARD_HOLDER = "B. M"
+PRICE = "99 900 UZS"
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
-DB_NAME = "kanji_bot.db"
+DB_NAME = "kanji_ai.db"
 
-# Render uchun dummy HTTP server (Bepul Web Service uchun)
+# Render HTTP server (port to'qnashuvining oldini olish uchun)
 async def handle_ping(request):
     return web.Response(text="Kanji AI Bot Active 24/7!")
 
@@ -30,67 +31,32 @@ async def start_web_server():
     site = web.TCPSite(runner, "0.0.0.0", port)
     await site.start()
 
-# Bazani yaratish
 async def init_db():
     async with aiosqlite.connect(DB_NAME) as db:
         await db.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 user_id INTEGER PRIMARY KEY,
-                current_index INTEGER DEFAULT 0,
-                learned_count INTEGER DEFAULT 0,
-                is_vip INTEGER DEFAULT 0
+                is_vip INTEGER DEFAULT 0,
+                free_questions INTEGER DEFAULT 3
             )
         """)
         await db.commit()
 
-# Kanji Ma'lumotlar Bazasi (VIP va Free belgilangan)
-KANJI_DATA = [
-    {
-        "id": 0,
-        "kanji": "休",
-        "meaning": "Dam olmoq (Rest)",
-        "onyomi": "キュウ (Kyuu)",
-        "kunyomi": "やす-む (Yasu-mu)",
-        "mnemonic": "👤 Odam (亻) 🌳 daraxt (木) tagida suyanib dam olmoqda.",
-        "example": "休日 (Kyuujitsu) - Dam olish kuni",
-        "is_vip": False
-    },
-    {
-        "id": 1,
-        "kanji": "木",
-        "meaning": "Daraxt (Tree)",
-        "onyomi": "モク (Moku), ボク (Boku)",
-        "kunyomi": "き (Ki)",
-        "mnemonic": "🌴 Shoxlari va ildizlari tarqalgan daraxt shakli.",
-        "example": "木曜日 (Mokuyoubi) - Payshanba",
-        "is_vip": False
-    },
-    {
-        "id": 2,
-        "kanji": "明",
-        "meaning": "Yorug', ochiq (Bright - Premium)",
-        "onyomi": "メイ (Mei)",
-        "kunyomi": "あか-るい (Aka-rui)",
-        "mnemonic": "☀️ Quyosh (日) va 🌙 Oy (月) birga osmonda tursa, tevarak yorug' bo'ladi.",
-        "example": "明日 (Ashita) - Ertaga",
-        "is_vip": True
-    }
-]
-
 def main_keyboard(is_vip: bool):
     buttons = [
-        [InlineKeyboardButton(text="🧠 Kanji Mnemonika", callback_data="learn_kanji")],
-        [InlineKeyboardButton(text="📊 Mening natijam", callback_data="my_stats")]
+        [InlineKeyboardButton(text="🈁 Kanji Qidirish va AI Mnemonika", callback_data="search_kanji")],
+        [InlineKeyboardButton(text="⛩ JLPT Darajalari (N5-N1)", callback_data="jlpt_levels")],
+        [InlineKeyboardButton(text="👤 Profil va Status", callback_data="my_profile")]
     ]
     if not is_vip:
-        buttons.append([InlineKeyboardButton(text="👑 VIP Obuna Sotib Olish (99 900 so'm)", callback_data="buy_vip")])
+        buttons.append([InlineKeyboardButton(text=f"👑 VIP Obuna ({PRICE}/oy)", callback_data="buy_vip")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 @dp.message(Command("start"))
 async def start_handler(message: types.Message):
     async with aiosqlite.connect(DB_NAME) as db:
         await db.execute(
-            "INSERT OR IGNORE INTO users (user_id, current_index, learned_count, is_vip) VALUES (?, 0, 0, 0)",
+            "INSERT OR IGNORE INTO users (user_id, is_vip, free_questions) VALUES (?, 0, 3)",
             (message.from_user.id,)
         )
         await db.commit()
@@ -100,91 +66,58 @@ async def start_handler(message: types.Message):
 
     await message.answer(
         f"Konnichiwa, {message.from_user.first_name}! 🇯🇵\n\n"
-        "Kanji AI Botiga xush kelibsiz!\n"
-        "Mnemonika usulida kanjilarni tez va oson yodlang.",
+        "<b>Kanji AI</b> platformasiga xush kelibsiz!\n"
+        "Men yapon tili kanjilarini tez va oson eslab qolishingiz uchun AI yordamchisiman.\n\n"
+        "JLPT N5-N1 kanjilarini ma'nosi, o'qilishi (Onyomi/Kunyomi) va mnemonika usulida o'rganishingiz mumkin!",
+        parse_mode="HTML",
         reply_markup=main_keyboard(is_vip)
     )
 
 @dp.callback_query(F.data == "buy_vip")
 async def buy_vip_info(callback: types.CallbackQuery):
     text = (
-        "👑 <b>Kanji AI VIP Obuna</b>\n\n"
-        "VIP a'zolarga quyidagilar ochiladi:\n"
-        "✅ Barcha JLPT N5, N4, N3, N2, N1 kanjilari va vizual mnemonikasi\n"
-        "✅ Imtihon testlari va interaktiv mashqlar\n"
-        "✅ Cheksiz 24/7 foydalanish\n\n"
-        "💰 <b>Narxi:</b> 99 900 so'm / 1 oy\n\n"
-        f"💳 <b>To'lov uchun karta raqami:</b>\n"
-        f"<code>{CARD_NUMBER}</code> ({CARD_HOLDER})\n\n"
-        "📸 <b>Qanday faollashtiriladi?</b>\n"
-        "To'lovni amalga oshirgach, to'lov cheki skrinshotini (rasmini) <b>to'g'ridan-to'g'ri ushbu botga yuboring</b>. Admin tasdiqlashi bilan VIP billingingiz faollashadi!"
+        "👑 <b>Kanji AI — 1 Oylik VIP Obuna</b>\n\n"
+        "VIP imkoniyatlari:\n"
+        "✅ Barcha JLPT (N5-N1) kanjilariga cheksiz kirish\n"
+        "✅ Har bir kanji uchun AI tomonidan mnemonika va eslab qolish hikoyalari\n"
+        "✅ Misollar va so'z birikmalari tahlili\n\n"
+        f"💰 <b>Narxi:</b> {PRICE} / 1 oy\n"
+        f"💳 <b>Karta:</b> <code>{CARD_NUMBER}</code> ({CARD_HOLDER})\n\n"
+        "📸 To'lov qilgach, chek skrinshotini botga yuboring!"
     )
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="⬅️ Ortga", callback_data="main_menu")]
-    ])
+    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="⬅️ Ortga", callback_data="main_menu")]])
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
 
-@dp.callback_query(F.data == "learn_kanji")
-async def show_kanji(callback: types.CallbackQuery):
+@dp.callback_query(F.data == "search_kanji")
+async def search_kanji_handler(callback: types.CallbackQuery):
     user_id = callback.from_user.id
     async with aiosqlite.connect(DB_NAME) as db:
-        async with db.execute("SELECT current_index, is_vip FROM users WHERE user_id = ?", (user_id,)) as cursor:
+        async with db.execute("SELECT is_vip, free_questions FROM users WHERE user_id = ?", (user_id,)) as cursor:
             row = await cursor.fetchone()
-            idx = row[0] if row else 0
-            is_vip = bool(row[1]) if row else False
+            is_vip = bool(row[0]) if row else False
+            free_q = row[1] if row else 0
 
-    if idx >= len(KANJI_DATA):
-        await callback.message.edit_text(
-            "🎉 Barcha mavjud kanjilarni o'rganib chiqdingiz!",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="🔄 Qayta boshlash", callback_data="reset_progress")]
-            ])
-        )
-        return
-
-    item = KANJI_DATA[idx]
-
-    # VIP Cheklovi
-    if item["is_vip"] and not is_vip:
+    if not is_vip and free_q <= 0:
         kb = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="👑 VIP Obunani Olish (99 900 so'm)", callback_data="buy_vip")],
+            [InlineKeyboardButton(text=f"👑 VIP Obuna ({PRICE})", callback_data="buy_vip")],
             [InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="main_menu")]
         ])
         await callback.message.edit_text(
-            "🔒 <b>Bu kanji VIP obunachilar uchun!</b>\n\n"
-            "Keyingi barcha kanjilar va mnemonika kartalarini ochish uchun VIP obunani faollashtiring.",
+            "🔒 <b>Bepul savollar limitingiz tugadi!</b>\nCheksiz kanji qidirish va AI mnemonika uchun VIP obunani faollashtiring.",
             parse_mode="HTML",
             reply_markup=kb
         )
         return
 
-    text = (
-        f"⛩ <b>Kanji:</b> {item['kanji']}\n\n"
-        f"📖 <b>Ma'nosi:</b> {item['meaning']}\n"
-        f"🔊 <b>Onyomi:</b> {item['onyomi']}\n"
-        f"🗣 <b>Kunyomi:</b> {item['kunyomi']}\n\n"
-        f"🧩 <b>Mnemonika:</b>\n{item['mnemonic']}\n\n"
-        f"💡 <b>Misol:</b> {item['example']}"
+    status_text = "👑 VIP (Cheksiz)" if is_vip else f"🆓 Bepul: {free_q} ta savol qoldi"
+    await callback.message.edit_text(
+        f"🈁 <b>Kanji belgisini yoki ma'nosini yuboring!</b>\n\n"
+        f"Status: <b>{status_text}</b>\n"
+        "Masalan: <i>'日'</i> yoki <i>'quyosh'</i>",
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="⬅️ Ortga", callback_data="main_menu")]])
     )
 
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✅ Keyingisi ➡️", callback_data="next_kanji")],
-        [InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="main_menu")]
-    ])
-    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
-
-@dp.callback_query(F.data == "next_kanji")
-async def next_kanji(callback: types.CallbackQuery):
-    user_id = callback.from_user.id
-    async with aiosqlite.connect(DB_NAME) as db:
-        await db.execute(
-            "UPDATE users SET current_index = current_index + 1, learned_count = learned_count + 1 WHERE user_id = ?",
-            (user_id,)
-        )
-        await db.commit()
-    await show_kanji(callback)
-
-# Foydalanuvchi Chek (Rasm) yuborganda Admin panelga jo'natish
 @dp.message(F.photo)
 async def handle_receipt(message: types.Message):
     user = message.from_user
@@ -197,17 +130,16 @@ async def handle_receipt(message: types.Message):
     await bot.send_photo(
         chat_id=ADMIN_ID,
         photo=photo_id,
-        caption=f"💳 <b>Yangi to'lov cheki keldi!</b>\n\n"
+        caption=f"💳 <b>Yangi to'lov cheki (Kanji AI)</b>\n\n"
                 f"👤 <b>Foydalanuvchi:</b> {user.full_name} (@{user.username})\n"
                 f"🆔 <b>ID:</b> <code>{user.id}</code>\n"
-                f"💰 <b>Tarif:</b> 99 900 so'm",
+                f"💰 <b>Tarif:</b> {PRICE}",
         parse_mode="HTML",
         reply_markup=admin_kb
     )
     
-    await message.answer("📩 To'lov chekingiz adminga yuborildi. Tez orada ko'rib chiqilib, VIP obunangiz faollashtiriladi!")
+    await message.answer("📩 To'lov chekingiz adminga yuborildi. Tez orada VIP obunangiz faollashtiriladi!")
 
-# Admin VIP statusni tasdiqlaganda
 @dp.callback_query(F.data.startswith("approve_vip_"))
 async def approve_vip(callback: types.CallbackQuery):
     if callback.from_user.id != ADMIN_ID:
@@ -220,46 +152,49 @@ async def approve_vip(callback: types.CallbackQuery):
         await db.commit()
 
     await callback.message.edit_caption(
-        caption=callback.message.caption + "\n\n✅ <b>VIP Muvaffaqiyatli Aktivlashtirildi!</b>",
+        caption=callback.message.caption + "\n\n✅ <b>VIP Obuna Faollashtirildi!</b>",
         parse_mode="HTML"
     )
     
     try:
         await bot.send_message(
             chat_id=target_user_id,
-            text="🎉 <b>Tabriklaymiz!</b> Sizning VIP obunangiz faollashtirildi. Barcha kanjilardan cheksiz foydalanishingiz mumkin!",
+            text="🎉 <b>Tabriklaymiz!</b> Kanji AI VIP obunangiz faollashtirildi. Cheksiz foydalanishingiz mumkin!",
             parse_mode="HTML"
         )
     except Exception:
         pass
 
-@dp.callback_query(F.data == "my_stats")
-async def show_stats(callback: types.CallbackQuery):
+@dp.callback_query(F.data == "my_profile")
+async def show_profile(callback: types.CallbackQuery):
     user_id = callback.from_user.id
     async with aiosqlite.connect(DB_NAME) as db:
-        async with db.execute("SELECT learned_count, is_vip FROM users WHERE user_id = ?", (user_id,)) as cursor:
+        async with db.execute("SELECT is_vip, free_questions FROM users WHERE user_id = ?", (user_id,)) as cursor:
             row = await cursor.fetchone()
-            learned = row[0] if row else 0
-            is_vip = bool(row[1]) if row else False
+            is_vip = bool(row[0]) if row else False
+            free_q = row[1] if row else 0
 
-    status = "👑 VIP A'zo" if is_vip else "🔒 Bepul Tarif"
+    status = "👑 VIP (1 oylik faol)" if is_vip else "🔒 Bepul Tarif"
     text = (
-        f"📊 <b>Sizning natijangiz:</b>\n\n"
+        f"👤 <b>Profilingiz:</b>\n\n"
         f"Status: <b>{status}</b>\n"
-        f"O'rganilgan kanjilar: <b>{learned} / {len(KANJI_DATA)}</b> ta"
+        f"Qolgan bepul savollar: <b>{free_q} ta</b>"
     )
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="⬅️ Ortga", callback_data="main_menu")]
-    ])
+    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="⬅️ Ortga", callback_data="main_menu")]])
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
 
-@dp.callback_query(F.data == "reset_progress")
-async def reset_progress(callback: types.CallbackQuery):
-    user_id = callback.from_user.id
-    async with aiosqlite.connect(DB_NAME) as db:
-        await db.execute("UPDATE users SET current_index = 0 WHERE user_id = ?", (user_id,))
-        await db.commit()
-    await show_kanji(callback)
+@dp.callback_query(F.data == "jlpt_levels")
+async def show_jlpt(callback: types.CallbackQuery):
+    text = (
+        "⛩ <b>JLPT Kanji Darajalari:</b>\n\n"
+        "🔹 <b>N5:</b> ~100 ta asosiy kanji\n"
+        "🔹 <b>N4:</b> ~300 ta kanji\n"
+        "🔹 <b>N3:</b> ~650 ta kanji\n"
+        "🔹 <b>N2:</b> ~1000 ta kanji\n"
+        "🔹 <b>N1:</b> ~2000 ta kanji"
+    )
+    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="⬅️ Ortga", callback_data="main_menu")]])
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
 
 @dp.callback_query(F.data == "main_menu")
 async def back_to_main(callback: types.CallbackQuery):
